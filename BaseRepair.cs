@@ -12,7 +12,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Base Repair", "MJSU", "1.0.24")]
+    [Info("Base Repair", "MJSU", "1.0.25")]
     [Description("Allows player to repair their entire base")]
     internal class BaseRepair : RustPlugin
     {
@@ -82,7 +82,7 @@ namespace Oxide.Plugins
 
         private PluginConfig AdditionalConfig(PluginConfig config)
         {
-            config.ChatCommands = config.ChatCommands ?? new List<string>
+            config.ChatCommands ??= new List<string>
             {
                 "br"
             };
@@ -139,20 +139,8 @@ namespace Oxide.Plugins
             {
                 return null;
             }
-            
-            if (!HasPermission(player, UsePermission))
-            {
-                return null;
-            }
-            
-            if (_storedData.RepairEnabled.ContainsKey(player.userID))
-            {
-                if (!_storedData.RepairEnabled[player.userID])
-                {
-                    return null;
-                }
-            }
-            else if (!_pluginConfig.DefaultEnabled)
+
+            if (!CanRepair(player))
             {
                 return null;
             }
@@ -219,6 +207,27 @@ namespace Oxide.Plugins
             _rb.StartCoroutine(DoBuildingRepair(player, building, stats));
             return _true;
         }
+
+        public bool CanRepair(BasePlayer player)
+        {
+            if (!HasPermission(player, UsePermission))
+            {
+                return false;
+            }
+
+            if (_pluginConfig.EnableHammerSkin && player.GetActiveItem()?.skin == _pluginConfig.HammerSkinId)
+            {
+                return true;
+            }
+
+            if (_storedData.RepairEnabled.TryGetValue(player.userID, out bool enabled))
+            {
+                return enabled;
+            }
+
+            return _pluginConfig.DefaultEnabled;
+        }
+
         #endregion
 
         #region Repair Handler
@@ -236,9 +245,9 @@ namespace Oxide.Plugins
                 for (int i = 0; i < entity.children.Count; i++)
                 {
                     BaseEntity childEntity = entity.children[i];
-                    if (childEntity is BaseLadder)
+                    if (childEntity is BaseLadder ladder)
                     {
-                        DoRepair(player, (BaseLadder)childEntity, stats, noCostPerm);
+                        DoRepair(player, ladder, stats, noCostPerm);
                     }
                 }
 
@@ -421,6 +430,12 @@ namespace Oxide.Plugins
             for (int index = 0; index < entityAmount.Count; index++)
             {
                 ItemAmount itemAmount = entityAmount[index];
+                
+                if (entity.repair.ignoreForRepair && itemAmount.itemDef.itemid == entity.repair.ignoreForRepair.itemid)
+                {
+                    continue;
+                }
+                
                 int amount = Mathf.RoundToInt(itemAmount.amount * repairCostFraction * missingHealthFraction);
                 if (amount > 0)
                 {
@@ -544,6 +559,13 @@ namespace Oxide.Plugins
 
             [JsonProperty(PropertyName = "Chat Commands")]
             public List<string> ChatCommands { get; set; }
+            
+            [JsonProperty(PropertyName = "Enable Repairs Using A Skinned Hammer")]
+            public bool EnableHammerSkin { get; set; }
+            
+            [DefaultValue(2902701361)]
+            [JsonProperty(PropertyName = "Repair Hammer Skin ID")]
+            public ulong HammerSkinId { get; set; }
         }
 
         private class StoredData

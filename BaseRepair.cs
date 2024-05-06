@@ -10,7 +10,7 @@ using Oxide.Core.Plugins;
 
 namespace Oxide.Plugins
 {
-    [Info("Base Repair", "MJSU", "1.0.2")]
+    [Info("Base Repair", "MJSU", "1.0.3")]
     [Description("Allows player to repair their entire base")]
     internal class BaseRepair : RustPlugin
     {
@@ -166,7 +166,17 @@ namespace Oxide.Plugins
         private object OnHammerHit(BasePlayer player, HitInfo info)
         {
             BaseCombatEntity entity = info?.HitEntity as BaseCombatEntity;
-            if (entity == null || entity.IsDestroyed || !_storedData.RepairEnabled[player.userID])
+            if (entity == null || entity.IsDestroyed)
+            {
+                return null;
+            }
+
+            if (!_storedData.RepairEnabled.ContainsKey(player.userID) && _pluginConfig.DefaultEnabled)
+            {
+                _storedData.RepairEnabled[player.userID] = true;
+            }
+
+            if (!_storedData.RepairEnabled[player.userID])
             {
                 return null;
             }
@@ -190,7 +200,7 @@ namespace Oxide.Plugins
             }
             
             PlayerRepairStats stats = new PlayerRepairStats();
-            BuildingManager.Building building = BuildingManager.server.GetBuilding(priv.buildingID);
+            BuildingManager.Building building = priv.GetBuilding();
             ServerMgr.Instance.StartCoroutine(DoBuildingRepair(player, building, stats));
             return true;
         }
@@ -301,8 +311,16 @@ namespace Oxide.Plugins
                 entity.OnRepairFinished();
                 return;
             }
-            
-            if (itemAmounts.Any(ia => player.inventory.GetAmount(ia.itemid) < ia.amount))
+
+            if (_pluginConfig.RepairCostMultiplier != 1f)
+            {
+                foreach (ItemAmount amount in itemAmounts)
+                {
+                    amount.amount *= _pluginConfig.RepairCostMultiplier;
+                }
+            }
+
+            if (itemAmounts.Any(ia => player.inventory.GetAmount(ia.itemid) < (int)ia.amount))
             {
                 entity.OnRepairFailed(null, string.Empty);
 
@@ -380,6 +398,14 @@ namespace Oxide.Plugins
             [DefaultValue(10)]
             [JsonProperty(PropertyName = "Number of entities to repair per server frame")]
             public int RepairsPerFrame { get; set; }
+            
+            [DefaultValue(false)]
+            [JsonProperty(PropertyName = "Default Enabled")]
+            public bool DefaultEnabled { get; set; }
+            
+            [DefaultValue(1f)]
+            [JsonProperty(PropertyName = "Repair Cost Multiplier")]
+            public float RepairCostMultiplier { get; set; }
             
             [DefaultValue("br")]
             [JsonProperty(PropertyName = "Chat Command")]

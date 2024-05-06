@@ -10,7 +10,7 @@ using Oxide.Core.Plugins;
 
 namespace Oxide.Plugins
 {
-    [Info("Base Repair", "MJSU", "1.0.3")]
+    [Info("Base Repair", "MJSU", "1.0.4")]
     [Description("Allows player to repair their entire base")]
     internal class BaseRepair : RustPlugin
     {
@@ -21,6 +21,7 @@ namespace Oxide.Plugins
         private PluginConfig _pluginConfig; //Plugin Config
 
         private const string UsePermission = "baserepair.use";
+        private const string NoCostPermission = "baserepair.nocost";
         private const string NoEscapeRaidRepairPermission = "noescape.raid.repairblock";
         private const string NoEscapeCombatRepairPermission = "noescape.combat.repairblock";
         private const string AccentColor = "#de8732";
@@ -34,6 +35,7 @@ namespace Oxide.Plugins
         {
             _storedData = Interface.Oxide.DataFileSystem.ReadObject<StoredData>(Name);
             permission.RegisterPermission(UsePermission, this);
+            permission.RegisterPermission(NoCostPermission, this);
             cmd.AddChatCommand(_pluginConfig.ChatCommand, this, BaseRepairChatCommand);
         }
         
@@ -211,10 +213,11 @@ namespace Oxide.Plugins
         private IEnumerator DoBuildingRepair(BasePlayer player, BuildingManager.Building building, PlayerRepairStats stats)
         {
             _repairingPlayers.Add(player.userID);
+            bool noCostPerm = HasPermission(player, NoCostPermission);
             
             for(int index = 0; index < building.decayEntities.Count; index++)
             {
-                DoRepair(player, building.decayEntities[index], stats);
+                DoRepair(player, building.decayEntities[index], stats, noCostPerm);
 
                 if (index % _pluginConfig.RepairsPerFrame == 0)
                 {
@@ -227,7 +230,7 @@ namespace Oxide.Plugins
             {
                 for (int index = 0; index < buildingIoEntities.Count; index++)
                 {
-                    DoRepair(player, buildingIoEntities[index], stats);
+                    DoRepair(player, buildingIoEntities[index], stats, noCostPerm);
 
                     if (index % _pluginConfig.RepairsPerFrame == 0)
                     {
@@ -276,7 +279,7 @@ namespace Oxide.Plugins
             _repairingPlayers.Remove(player.userID);
         }
 
-        private void DoRepair(BasePlayer player, BaseCombatEntity entity, PlayerRepairStats stats)
+        private void DoRepair(BasePlayer player, BaseCombatEntity entity, PlayerRepairStats stats, bool noCost)
         {
             if (!entity.repair.enabled || entity.health == entity.MaxHealth())
             {
@@ -302,41 +305,44 @@ namespace Oxide.Plugins
                 entity.OnRepairFailed(null, string.Empty);
                 return;
             }
-
-            List<ItemAmount> itemAmounts = entity.RepairCost(healthPercentage);
-            if (itemAmounts.Sum(x => x.amount) <= 0f)
+            
+            if (!noCost)
             {
-                entity.health += missingHealth;
-                entity.SendNetworkUpdate();
-                entity.OnRepairFinished();
-                return;
-            }
-
-            if (_pluginConfig.RepairCostMultiplier != 1f)
-            {
-                foreach (ItemAmount amount in itemAmounts)
+                List<ItemAmount> itemAmounts = entity.RepairCost(healthPercentage);
+                if (itemAmounts.Sum(x => x.amount) <= 0f)
                 {
-                    amount.amount *= _pluginConfig.RepairCostMultiplier;
-                }
-            }
-
-            if (itemAmounts.Any(ia => player.inventory.GetAmount(ia.itemid) < (int)ia.amount))
-            {
-                entity.OnRepairFailed(null, string.Empty);
-
-                foreach (ItemAmount amount in itemAmounts)
-                {
-                    stats.MissingAmounts[amount.itemid] += (int) amount.amount;
+                    entity.health += missingHealth;
+                    entity.SendNetworkUpdate();
+                    entity.OnRepairFinished();
+                    return;
                 }
 
-                stats.TotalCantAfford++;
-                return;
-            }
+                if (_pluginConfig.RepairCostMultiplier != 1f)
+                {
+                    foreach (ItemAmount amount in itemAmounts)
+                    {
+                        amount.amount *= _pluginConfig.RepairCostMultiplier;
+                    }
+                }
 
-            foreach (ItemAmount amount in itemAmounts)
-            {
-                player.inventory.Take(null, amount.itemid, (int)amount.amount);
-                stats.AmountTaken[amount.itemid] += (int)amount.amount;
+                if (itemAmounts.Any(ia => player.inventory.GetAmount(ia.itemid) < (int)ia.amount))
+                {
+                    entity.OnRepairFailed(null, string.Empty);
+
+                    foreach (ItemAmount amount in itemAmounts)
+                    {
+                        stats.MissingAmounts[amount.itemid] += (int) amount.amount;
+                    }
+
+                    stats.TotalCantAfford++;
+                    return;
+                }
+
+                foreach (ItemAmount amount in itemAmounts)
+                {
+                    player.inventory.Take(null, amount.itemid, (int)amount.amount);
+                    stats.AmountTaken[amount.itemid] += (int)amount.amount;
+                }
             }
 
             entity.health += missingHealth;

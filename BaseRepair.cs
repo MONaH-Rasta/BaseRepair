@@ -12,7 +12,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Base Repair", "MJSU", "1.0.21")]
+    [Info("Base Repair", "MJSU", "1.0.22")]
     [Description("Allows player to repair their entire base")]
     internal class BaseRepair : RustPlugin
     {
@@ -158,36 +158,19 @@ namespace Oxide.Plugins
                 return _true;
             }
             
-            BuildingManager.Building building = null;
             BuildingPrivlidge priv = null;
-            DecayEntity decay = entity as DecayEntity;
-            if (decay)
+            if (entity is DecayEntity)
             {
-                if (decay.buildingID == 0)
-                {
-                    return null;
-                }
-
-                building = decay.GetBuilding();
-                if (building != null)
-                {
-                    priv = building.GetDominatingBuildingPrivilege();
-                    if (priv && !priv.IsAuthed(player))
-                    {
-                        return null;
-                    }
-                }
+                priv = ((DecayEntity)entity).GetBuilding()?.GetDominatingBuildingPrivilege();
             }
 
             if (!priv)
             {
                 priv = player.GetBuildingPrivilege();
-                if (!priv || !priv.IsAuthed(player))
+                if (!priv)
                 {
                     return null;
                 }
-                
-                building = priv.GetBuilding();
             }
 
             if (!HasPermission(player, NoAuthPermission) && !priv.IsAuthed(player))
@@ -196,6 +179,8 @@ namespace Oxide.Plugins
             }
 
             PlayerRepairStats stats = new PlayerRepairStats();
+
+            BuildingManager.Building building = priv.GetBuilding();
 
             if (Interface.CallHook("OnBaseRepair", building, player) != null)
             {
@@ -274,7 +259,7 @@ namespace Oxide.Plugins
 
         private void DoRepair(BasePlayer player, BaseCombatEntity entity, PlayerRepairStats stats, bool noCost)
         {
-            if (!entity || !entity.IsValid() || entity.IsDestroyed)
+            if (!entity.IsValid() || entity.IsDestroyed)
             {
                 return;
             }

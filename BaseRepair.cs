@@ -12,7 +12,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Base Repair", "MJSU", "1.0.15")]
+    [Info("Base Repair", "MJSU", "1.0.16")]
     [Description("Allows player to repair their entire base")]
     internal class BaseRepair : RustPlugin
     {
@@ -25,6 +25,7 @@ namespace Oxide.Plugins
 
         private const string UsePermission = "baserepair.use";
         private const string NoCostPermission = "baserepair.nocost";
+        private const string NoAuthPermission = "baserepair.noauth";
         private const string NoEscapeRaidRepairPermission = "noescape.raid.repairblock";
         private const string NoEscapeCombatRepairPermission = "noescape.combat.repairblock";
         private const string AccentColor = "#de8732";
@@ -41,6 +42,7 @@ namespace Oxide.Plugins
             _storedData = Interface.Oxide.DataFileSystem.ReadObject<StoredData>(Name);
             permission.RegisterPermission(UsePermission, this);
             permission.RegisterPermission(NoCostPermission, this);
+            permission.RegisterPermission(NoAuthPermission, this);
             foreach (string command in _pluginConfig.ChatCommands)
             {
                 cmd.AddChatCommand(command, this, BaseRepairChatCommand);
@@ -53,15 +55,13 @@ namespace Oxide.Plugins
             {
                 [LangKeys.Chat] = $"<color=#bebebe>[<color={AccentColor}>{Title}</color>] {{0}}</color>",
                 [LangKeys.NoPermission] = "You do not have permission to use this command",
-                [LangKeys.RepairInProcess] =
-                    "You have a current repair in progress. Please wait for that to finish before repairing again",
+                [LangKeys.RepairInProcess] = "You have a current repair in progress. Please wait for that to finish before repairing again",
                 [LangKeys.RecentlyDamaged] = "We failed to repair {0} because they were recently damaged",
                 [LangKeys.AmountRepaired] = "We have repaired {0} damaged items in this base. ",
                 [LangKeys.CantAfford] = "We failed to repair {0} because you were missing items to pay for it.",
                 [LangKeys.MissingItems] = "The items you were missing are:",
                 [LangKeys.MissingItem] = "{0}: {1}x",
-                [LangKeys.Enabled] =
-                    "You enabled enabled building repair. Hit the building you wish to repair with the hammer and we will do the rest for you.",
+                [LangKeys.Enabled] = "You enabled enabled building repair. Hit the building you wish to repair with the hammer and we will do the rest for you.",
                 [LangKeys.Disabled] = "You have disabled building repair.",
                 [LangKeys.NoEscape] = "You cannot repair your base right now because you're raid or combat blocked"
             }, this);
@@ -192,7 +192,12 @@ namespace Oxide.Plugins
             }
 
             BuildingPrivlidge priv = player.GetBuildingPrivilege();
-            if (priv == null || !priv.IsAuthed(player))
+            if (priv == null)
+            {
+                return null;
+            }
+            
+            if (!HasPermission(player, NoAuthPermission) && !priv.IsAuthed(player))
             {
                 return null;
             }

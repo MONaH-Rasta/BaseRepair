@@ -10,7 +10,7 @@ using Oxide.Core.Plugins;
 
 namespace Oxide.Plugins
 {
-    [Info("Base Repair", "MJSU", "1.0.6")]
+    [Info("Base Repair", "MJSU", "1.0.7")]
     [Description("Allows player to repair their entire base")]
     internal class BaseRepair : RustPlugin
     {
@@ -224,7 +224,14 @@ namespace Oxide.Plugins
             
             for(int index = 0; index < building.decayEntities.Count; index++)
             {
-                DoRepair(player, building.decayEntities[index], stats, noCostPerm);
+                DecayEntity entity = building.decayEntities[index];
+                DoRepair(player, entity, stats, noCostPerm);
+
+                foreach (BaseLadder ladder in entity.children.OfType<BaseLadder>())
+                {
+                    DoRepair(player, ladder, stats, noCostPerm);
+                    yield return null;
+                }
 
                 if (index % _pluginConfig.RepairsPerFrame == 0)
                 {

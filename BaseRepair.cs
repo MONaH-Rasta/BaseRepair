@@ -12,7 +12,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Base Repair", "MJSU", "1.0.20")]
+    [Info("Base Repair", "MJSU", "1.0.21")]
     [Description("Allows player to repair their entire base")]
     internal class BaseRepair : RustPlugin
     {
@@ -49,6 +49,10 @@ namespace Oxide.Plugins
             {
                 cmd.AddChatCommand(command, this, BaseRepairChatCommand);
             }
+            
+            _go = new GameObject(Name);
+            _rb = _go.AddComponent<RepairBehavior>();
+            
             UnsubscribeAll();
         }
 
@@ -90,8 +94,6 @@ namespace Oxide.Plugins
 
         private void OnServerInitialized()
         {
-            _go = new GameObject(Name);
-            _rb = _go.AddComponent<RepairBehavior>();
             SubscribeAll();
         }
 
@@ -133,12 +135,6 @@ namespace Oxide.Plugins
                 return null;
             }
 
-            DecayEntity decay = entity as DecayEntity;
-            if (decay != null && decay.buildingID == 0)
-            {
-                return null;
-            }
-            
             if (!HasPermission(player, UsePermission))
             {
                 return null;
@@ -161,21 +157,46 @@ namespace Oxide.Plugins
                 Chat(player, Lang(LangKeys.RepairInProcess, player));
                 return _true;
             }
-
-            BuildingPrivlidge priv = player.GetBuildingPrivilege();
-            if (priv == null)
-            {
-                return null;
-            }
             
+            BuildingManager.Building building = null;
+            BuildingPrivlidge priv = null;
+            DecayEntity decay = entity as DecayEntity;
+            if (decay)
+            {
+                if (decay.buildingID == 0)
+                {
+                    return null;
+                }
+
+                building = decay.GetBuilding();
+                if (building != null)
+                {
+                    priv = building.GetDominatingBuildingPrivilege();
+                    if (priv && !priv.IsAuthed(player))
+                    {
+                        return null;
+                    }
+                }
+            }
+
+            if (!priv)
+            {
+                priv = player.GetBuildingPrivilege();
+                if (!priv || !priv.IsAuthed(player))
+                {
+                    return null;
+                }
+                
+                building = priv.GetBuilding();
+            }
+
             if (!HasPermission(player, NoAuthPermission) && !priv.IsAuthed(player))
             {
                 return null;
             }
 
             PlayerRepairStats stats = new PlayerRepairStats();
-            BuildingManager.Building building = priv.GetBuilding();
-            
+
             if (Interface.CallHook("OnBaseRepair", building, player) != null)
             {
                 return null;

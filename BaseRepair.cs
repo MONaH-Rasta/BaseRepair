@@ -4,13 +4,15 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Text;
+using Facepunch;
 using Newtonsoft.Json;
 using Oxide.Core;
 using Oxide.Core.Plugins;
+using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Base Repair", "MJSU", "1.0.8")]
+    [Info("Base Repair", "MJSU", "1.0.9")]
     [Description("Allows player to repair their entire base")]
     internal class BaseRepair : RustPlugin
     {
@@ -103,20 +105,20 @@ namespace Oxide.Plugins
                 {
                     yield return null;
                 }
-                
-                BuildingPrivlidge priv = entity.GetBuildingPrivilege();
-                if (priv == null)
+
+                BuildingBlock block = GetNearbyBuildingBlock(entity);
+                if (block == null)
                 {
                     continue;
                 }
 
-                if (!_ioEntity.ContainsKey(priv.buildingID))
+                if (!_ioEntity.ContainsKey(block.buildingID))
                 {
-                    _ioEntity[priv.buildingID] = new List<IOEntity>{entity};
+                    _ioEntity[block.buildingID] = new List<IOEntity>{entity};
                 }
                 else
                 {
-                    _ioEntity[priv.buildingID].Add(entity);
+                    _ioEntity[block.buildingID].Add(entity);
                 }
             }
         }
@@ -188,33 +190,52 @@ namespace Oxide.Plugins
             return true;
         }
         
-        private void OnEntitySpawned(ContainerIOEntity entity)
+        private void OnEntitySpawned(IOEntity entity)
         {
-            BuildingPrivlidge priv = entity.GetBuildingPrivilege();
-            if (priv == null)
+            BuildingBlock block = GetNearbyBuildingBlock(entity);
+            if (block == null)
             {
                 return;
             }
             
-            if (!_ioEntity.ContainsKey(priv.buildingID))
+            if (!_ioEntity.ContainsKey(block.buildingID))
             {
-                _ioEntity[priv.buildingID] = new List<IOEntity>{entity};
+                _ioEntity[block.buildingID] = new List<IOEntity>{entity};
             }
             else
             {
-                _ioEntity[priv.buildingID].Add(entity);
+                _ioEntity[block.buildingID].Add(entity);
             }
         }
 
-        private void OnEntityKill(ContainerIOEntity entity)
+        private void OnEntityKill(IOEntity entity)
         {
-            BuildingPrivlidge priv = entity.GetBuildingPrivilege();
-            if (priv == null)
+            BuildingBlock block = GetNearbyBuildingBlock(entity);
+            if (block == null)
             {
                 return;
             }
 
-            _ioEntity[priv.buildingID]?.Remove(entity);
+            _ioEntity[block.buildingID]?.Remove(entity);
+        }
+
+        private void OnBuildingSplit(BuildingManager.Building building, uint newId)
+        {
+            uint oldId = building.ID;
+            
+            NextTick(() =>
+            {
+                List<IOEntity> oldEntities = _ioEntity[oldId];
+                if (oldEntities == null)
+                {
+                    return;
+                }
+                
+                foreach (IOEntity oldEntity in oldEntities)
+                {
+                    OnEntitySpawned(oldEntity);
+                }
+            });
         }
         #endregion
 
@@ -380,6 +401,30 @@ namespace Oxide.Plugins
         #endregion
 
         #region Helper Methods
+        private BuildingBlock GetNearbyBuildingBlock(BaseEntity entity)
+        {
+            float minDistance = float.MaxValue;
+            BuildingBlock buildingBlock = null;
+            Vector3 point = entity.PivotPoint();
+            List<BuildingBlock> list = Pool.GetList<BuildingBlock>();
+            Vis.Entities(point, 1.5f, list, Rust.Layers.Construction);
+            for (int i = 0; i < list.Count; i++)
+            {
+                BuildingBlock item = list[i];
+                if (item.isServer == entity.isServer)
+                {
+                    float distance = item.SqrDistance(point);
+                    if (distance < minDistance)
+                    {
+                        minDistance = distance;
+                        buildingBlock = item;
+                    }
+                }
+            }
+            Pool.FreeList(ref list);
+            return buildingBlock;
+        }
+        
         private bool IsNoEscapeBlocked(BasePlayer player)
         {
             if (NoEscape == null)

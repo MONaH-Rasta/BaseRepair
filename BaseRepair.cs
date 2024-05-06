@@ -10,7 +10,7 @@ using Oxide.Core.Plugins;
 
 namespace Oxide.Plugins
 {
-    [Info("Base Repair", "MJSU", "1.0.0")]
+    [Info("Base Repair", "MJSU", "1.0.1")]
     [Description("Allows player to repair their entire base")]
     internal class BaseRepair : RustPlugin
     {
@@ -27,7 +27,7 @@ namespace Oxide.Plugins
         #endregion
 
         #region Setup & Loading
-        private void Loaded()
+        private void Init()
         {
             _storedData = Interface.Oxide.DataFileSystem.ReadObject<StoredData>(Name);
             permission.RegisterPermission(UsePermission, this);
@@ -92,7 +92,7 @@ namespace Oxide.Plugins
         private object OnHammerHit(BasePlayer player, HitInfo info)
         {
             BaseCombatEntity entity = info?.HitEntity as BaseCombatEntity;
-            if (entity == null || entity.IsDestroyed || IsNoEscapeBlocked(player.UserIDString) || !_storedData.RepairEnabled[player.userID])
+            if (entity == null || entity.IsDestroyed || !_storedData.RepairEnabled[player.userID] || IsNoEscapeBlocked(player.UserIDString))
             {
                 return null;
             }
@@ -121,12 +121,10 @@ namespace Oxide.Plugins
         private IEnumerator DoBuildingRepair(BasePlayer player, BuildingManager.Building building, PlayerRepairStats stats)
         {
             _repairingPlayers.Add(player.userID);
-
-            int index = 0;
-            foreach (DecayEntity entity in building.decayEntities)
+            
+            for(int index = 0; index < building.decayEntities.Count; index++)
             {
-                index++;
-                DoRepair(player, entity, stats);
+                DoRepair(player, building.decayEntities[index], stats);
 
                 if (index % _pluginConfig.RepairsPerFrame == 0)
                 {
@@ -135,8 +133,7 @@ namespace Oxide.Plugins
             }
 
             StringBuilder main = new StringBuilder();
-            StringBuilder cantAfford = new StringBuilder();
-            
+
             main.AppendLine(Lang(LangKeys.AmountRepaired, player, stats.TotalSuccess));
 
             if (stats.RecentlyDamaged > 0)
@@ -148,6 +145,7 @@ namespace Oxide.Plugins
             
             if (stats.TotalCantAfford > 0)
             {
+                StringBuilder cantAfford = new StringBuilder();
                 cantAfford.AppendLine(Lang(LangKeys.CantAfford, player, stats.TotalCantAfford));
                 cantAfford.AppendLine(Lang(LangKeys.MissingItems, player));
 
@@ -204,9 +202,8 @@ namespace Oxide.Plugins
                 entity.OnRepairFinished();
                 return;
             }
-
-            bool canAfford = itemAmounts.All(ia => player.inventory.GetAmount(ia.itemid) >= ia.amount);
-            if (!canAfford)
+            
+            if (itemAmounts.Any(ia => player.inventory.GetAmount(ia.itemid) < ia.amount))
             {
                 entity.OnRepairFailed(null, string.Empty);
 
@@ -225,7 +222,7 @@ namespace Oxide.Plugins
                 stats.AmountTaken[amount.itemid] += (int)amount.amount;
             }
 
-            entity.health = entity.health + missingHealth;
+            entity.health += missingHealth;
             entity.SendNetworkUpdate();
 
             if (entity.health < entity.MaxHealth())
@@ -243,7 +240,7 @@ namespace Oxide.Plugins
         #endregion
 
         #region Helper Methods
-        private bool IsNoEscapeBlocked(string targetId) => NoEscape != null && (NoEscape.Call<bool>("IsRaidBlocked", targetId) || NoEscape.Call<bool>("IsRaidBlocked", targetId));
+        private bool IsNoEscapeBlocked(string targetId) => NoEscape != null && (NoEscape.Call<bool>("IsRaidBlocked", targetId) || NoEscape.Call<bool>("IsCombatBlocked", targetId));
 
         private void SaveData() => Interface.Oxide.DataFileSystem.WriteObject(Name, _storedData);
 

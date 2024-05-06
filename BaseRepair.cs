@@ -10,7 +10,7 @@ using Oxide.Core.Plugins;
 
 namespace Oxide.Plugins
 {
-    [Info("Base Repair", "MJSU", "1.0.4")]
+    [Info("Base Repair", "MJSU", "1.0.5")]
     [Description("Allows player to repair their entire base")]
     internal class BaseRepair : RustPlugin
     {
@@ -36,7 +36,10 @@ namespace Oxide.Plugins
             _storedData = Interface.Oxide.DataFileSystem.ReadObject<StoredData>(Name);
             permission.RegisterPermission(UsePermission, this);
             permission.RegisterPermission(NoCostPermission, this);
-            cmd.AddChatCommand(_pluginConfig.ChatCommand, this, BaseRepairChatCommand);
+            foreach (string command in _pluginConfig.ChatCommands)
+            {
+                cmd.AddChatCommand(command, this, BaseRepairChatCommand);
+            }
         }
         
         protected override void LoadDefaultMessages()
@@ -73,6 +76,10 @@ namespace Oxide.Plugins
 
         private PluginConfig AdditionalConfig(PluginConfig config)
         {
+            config.ChatCommands = config.ChatCommands ?? new List<string>
+            {
+                "br"
+            };
             return config;
         }
 
@@ -414,8 +421,8 @@ namespace Oxide.Plugins
             public float RepairCostMultiplier { get; set; }
             
             [DefaultValue("br")]
-            [JsonProperty(PropertyName = "Chat Command")]
-            public string ChatCommand { get; set; }
+            [JsonProperty(PropertyName = "Chat Commands")]
+            public List<string> ChatCommands { get; set; }
         }
 
         private class StoredData

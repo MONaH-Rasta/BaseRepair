@@ -12,7 +12,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Base Repair", "MJSU", "1.0.23")]
+    [Info("Base Repair", "MJSU", "1.0.24")]
     [Description("Allows player to repair their entire base")]
     internal class BaseRepair : RustPlugin
     {
@@ -134,18 +134,25 @@ namespace Oxide.Plugins
             {
                 return null;
             }
-
+            
             if (entity is BaseVehicle)
             {
                 return null;
             }
-
+            
             if (!HasPermission(player, UsePermission))
             {
                 return null;
             }
-
-            if (!_pluginConfig.DefaultEnabled && (!_storedData.RepairEnabled.ContainsKey(player.userID) || !_storedData.RepairEnabled[player.userID]))
+            
+            if (_storedData.RepairEnabled.ContainsKey(player.userID))
+            {
+                if (!_storedData.RepairEnabled[player.userID])
+                {
+                    return null;
+                }
+            }
+            else if (!_pluginConfig.DefaultEnabled)
             {
                 return null;
             }
@@ -162,30 +169,47 @@ namespace Oxide.Plugins
                 Chat(player, Lang(LangKeys.RepairInProcess, player));
                 return _true;
             }
+
+            bool hasNoAuth = HasPermission(player, NoAuthPermission);
             
-            BuildingPrivlidge priv = null;
+            BuildingPrivlidge priv = player.GetBuildingPrivilege();
+            if (priv && !hasNoAuth && !priv.IsAuthed(player))
+            {
+                return null;
+            }
+            
+            BuildingManager.Building building = null;
             if (entity is DecayEntity)
             {
-                priv = ((DecayEntity)entity).GetBuilding()?.GetDominatingBuildingPrivilege();
+                building = ((DecayEntity)entity).GetBuilding();
             }
-
-            if (!priv)
+            
+            if (building == null)
             {
-                priv = player.GetBuildingPrivilege();
                 if (!priv)
                 {
                     return null;
                 }
+                
+                building = priv.GetBuilding();
+                if (building == null)
+                {
+                    return null;
+                }
             }
-
-            if (!HasPermission(player, NoAuthPermission) && !priv.IsAuthed(player))
+            
+            priv = building.GetDominatingBuildingPrivilege();
+            if (!priv && !_pluginConfig.AllowNoTcRepair)
+            {
+                return null;
+            }
+            
+            if (priv && !hasNoAuth && !priv.IsAuthed(player))
             {
                 return null;
             }
 
             PlayerRepairStats stats = new PlayerRepairStats();
-
-            BuildingManager.Building building = priv.GetBuilding();
 
             if (Interface.CallHook("OnBaseRepair", building, player) != null)
             {
@@ -505,6 +529,10 @@ namespace Oxide.Plugins
             [DefaultValue(false)]
             [JsonProperty(PropertyName = "Default Enabled")]
             public bool DefaultEnabled { get; set; }
+            
+            [DefaultValue(false)]
+            [JsonProperty(PropertyName = "Allow Repairing Bases Without A Tool Cupboard")]
+            public bool AllowNoTcRepair { get; set; }
 
             [DefaultValue(1f)]
             [JsonProperty(PropertyName = "Repair Cost Multiplier")]

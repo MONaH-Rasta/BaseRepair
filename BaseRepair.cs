@@ -12,7 +12,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Base Repair", "MJSU", "1.0.10")]
+    [Info("Base Repair", "MJSU", "1.0.11")]
     [Description("Allows player to repair their entire base")]
     internal class BaseRepair : RustPlugin
     {
@@ -108,6 +108,11 @@ namespace Oxide.Plugins
                 if (i % _pluginConfig.RepairsPerFrame == 0)
                 {
                     yield return null;
+                }
+
+                if (!entity.IsValid() || entity.IsDestroyed || entity.transform == null)
+                {
+                    continue;
                 }
 
                 BuildingBlock block = GetNearbyBuildingBlock(entity);

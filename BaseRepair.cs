@@ -12,7 +12,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Base Repair", "MJSU", "1.0.11")]
+    [Info("Base Repair", "MJSU", "1.0.12")]
     [Description("Allows player to repair their entire base")]
     internal class BaseRepair : RustPlugin
     {
@@ -100,6 +100,7 @@ namespace Oxide.Plugins
             for (int i = 0; i < ioEntities.Count; i++)
             {
                 IOEntity entity = ioEntities[i];
+
                 if (entity.OwnerID == 0)
                 {
                     continue;
@@ -109,8 +110,8 @@ namespace Oxide.Plugins
                 {
                     yield return null;
                 }
-
-                if (!entity.IsValid() || entity.IsDestroyed || entity.transform == null)
+                
+                if (entity?.gameObject == null || !entity.IsValid() || entity.IsDestroyed)
                 {
                     continue;
                 }

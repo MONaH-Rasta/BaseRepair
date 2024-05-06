@@ -10,7 +10,7 @@ using Oxide.Core.Plugins;
 
 namespace Oxide.Plugins
 {
-    [Info("Base Repair", "MJSU", "1.0.7")]
+    [Info("Base Repair", "MJSU", "1.0.8")]
     [Description("Allows player to repair their entire base")]
     internal class BaseRepair : RustPlugin
     {
@@ -122,38 +122,6 @@ namespace Oxide.Plugins
         }
         #endregion
 
-        #region uMod Hooks
-
-        private void OnEntitySpawned(ContainerIOEntity entity)
-        {
-            BuildingPrivlidge priv = entity.GetBuildingPrivilege();
-            if (priv == null)
-            {
-                return;
-            }
-            
-            if (!_ioEntity.ContainsKey(priv.buildingID))
-            {
-                _ioEntity[priv.buildingID] = new List<IOEntity>{entity};
-            }
-            else
-            {
-                _ioEntity[priv.buildingID].Add(entity);
-            }
-        }
-
-        private void OnEntityKill(ContainerIOEntity entity)
-        {
-            BuildingPrivlidge priv = entity.GetBuildingPrivilege();
-            if (priv == null)
-            {
-                return;
-            }
-
-            _ioEntity[priv.buildingID]?.Remove(entity);
-        }
-        #endregion
-
         #region Chat Command
         private void BaseRepairChatCommand(BasePlayer player, string cmd, string[] args)
         {
@@ -176,6 +144,12 @@ namespace Oxide.Plugins
         {
             BaseCombatEntity entity = info?.HitEntity as BaseCombatEntity;
             if (entity == null || entity.IsDestroyed)
+            {
+                return null;
+            }
+
+            DecayEntity decay = entity as DecayEntity;
+            if (decay != null && decay.buildingID == 0)
             {
                 return null;
             }
@@ -212,6 +186,35 @@ namespace Oxide.Plugins
             BuildingManager.Building building = priv.GetBuilding();
             ServerMgr.Instance.StartCoroutine(DoBuildingRepair(player, building, stats));
             return true;
+        }
+        
+        private void OnEntitySpawned(ContainerIOEntity entity)
+        {
+            BuildingPrivlidge priv = entity.GetBuildingPrivilege();
+            if (priv == null)
+            {
+                return;
+            }
+            
+            if (!_ioEntity.ContainsKey(priv.buildingID))
+            {
+                _ioEntity[priv.buildingID] = new List<IOEntity>{entity};
+            }
+            else
+            {
+                _ioEntity[priv.buildingID].Add(entity);
+            }
+        }
+
+        private void OnEntityKill(ContainerIOEntity entity)
+        {
+            BuildingPrivlidge priv = entity.GetBuildingPrivilege();
+            if (priv == null)
+            {
+                return;
+            }
+
+            _ioEntity[priv.buildingID]?.Remove(entity);
         }
         #endregion
 

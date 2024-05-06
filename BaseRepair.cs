@@ -12,7 +12,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Base Repair", "MJSU", "1.0.12")]
+    [Info("Base Repair", "MJSU", "1.0.13")]
     [Description("Allows player to repair their entire base")]
     internal class BaseRepair : RustPlugin
     {
@@ -111,7 +111,7 @@ namespace Oxide.Plugins
                     yield return null;
                 }
                 
-                if (entity?.gameObject == null || !entity.IsValid() || entity.IsDestroyed)
+                if (entity.gameObject == null || !entity.IsValid() || entity.IsDestroyed)
                 {
                     continue;
                 }
@@ -257,8 +257,7 @@ namespace Oxide.Plugins
 
         #region Repair Handler
 
-        private IEnumerator DoBuildingRepair(BasePlayer player, BuildingManager.Building building,
-            PlayerRepairStats stats)
+        private IEnumerator DoBuildingRepair(BasePlayer player, BuildingManager.Building building, PlayerRepairStats stats)
         {
             _repairingPlayers.Add(player.userID);
             bool noCostPerm = HasPermission(player, NoCostPermission);
@@ -421,24 +420,35 @@ namespace Oxide.Plugins
 
         private BuildingBlock GetNearbyBuildingBlock(BaseEntity entity)
         {
-            float minDistance = float.MaxValue;
-            BuildingBlock buildingBlock = null;
-            Vector3 point = entity.PivotPoint();
+            
             List<BuildingBlock> list = Pool.GetList<BuildingBlock>();
-            Vis.Entities(point, 1.5f, list, Rust.Layers.Construction);
-            for (int i = 0; i < list.Count; i++)
+            try
             {
-                BuildingBlock item = list[i];
-                float distance = item.SqrDistance(point);
-                if (distance < minDistance)
+                float minDistance = float.MaxValue;
+                BuildingBlock buildingBlock = null;
+                Vector3 point = entity.PivotPoint();
+                Vis.Entities(point, 1.5f, list, Rust.Layers.Construction);
+                for (int i = 0; i < list.Count; i++)
                 {
-                    minDistance = distance;
-                    buildingBlock = item;
+                    BuildingBlock item = list[i];
+                    float distance = item.SqrDistance(point);
+                    if (distance < minDistance)
+                    {
+                        minDistance = distance;
+                        buildingBlock = item;
+                    }
                 }
+                
+                return buildingBlock;
             }
-
-            Pool.FreeList(ref list);
-            return buildingBlock;
+            catch
+            {
+                return null;
+            }
+            finally
+            {
+                Pool.FreeList(ref list);
+            }
         }
 
         private bool IsNoEscapeBlocked(BasePlayer player)

@@ -10,7 +10,7 @@ using Oxide.Core.Plugins;
 
 namespace Oxide.Plugins
 {
-    [Info("Base Repair", "MJSU", "1.0.5")]
+    [Info("Base Repair", "MJSU", "1.0.6")]
     [Description("Allows player to repair their entire base")]
     internal class BaseRepair : RustPlugin
     {
@@ -420,7 +420,6 @@ namespace Oxide.Plugins
             [JsonProperty(PropertyName = "Repair Cost Multiplier")]
             public float RepairCostMultiplier { get; set; }
             
-            [DefaultValue("br")]
             [JsonProperty(PropertyName = "Chat Commands")]
             public List<string> ChatCommands { get; set; }
         }

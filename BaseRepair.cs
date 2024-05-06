@@ -12,7 +12,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Base Repair", "MJSU", "1.0.16")]
+    [Info("Base Repair", "MJSU", "1.0.17")]
     [Description("Allows player to repair their entire base")]
     internal class BaseRepair : RustPlugin
     {
@@ -163,8 +163,18 @@ namespace Oxide.Plugins
                 return null;
             }
 
+            if (entity is BaseVehicle)
+            {
+                return null;
+            }
+
             DecayEntity decay = entity as DecayEntity;
             if (decay != null && decay.buildingID == 0)
+            {
+                return null;
+            }
+
+            if (!HasPermission(player, UsePermission))
             {
                 return null;
             }

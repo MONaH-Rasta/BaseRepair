@@ -12,7 +12,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Base Repair", "MJSU", "1.0.17")]
+    [Info("Base Repair", "MJSU", "1.0.18")]
     [Description("Allows player to repair their entire base")]
     internal class BaseRepair : RustPlugin
     {
@@ -354,6 +354,11 @@ namespace Oxide.Plugins
 
         private void DoRepair(BasePlayer player, BaseCombatEntity entity, PlayerRepairStats stats, bool noCost)
         {
+            if (entity == null || !entity.IsValid() || entity.IsDestroyed || entity.transform == null)
+            {
+                return;
+            }
+
             if (!entity.repair.enabled || entity.health == entity.MaxHealth())
             {
                 return;
@@ -364,7 +369,7 @@ namespace Oxide.Plugins
                 return;
             }
 
-            if (entity.SecondsSinceAttacked <= 30f)
+            if (entity.SecondsSinceAttacked <= _pluginConfig.EntityRepairDelay)
             {
                 entity.OnRepairFailed(null, string.Empty);
                 stats.RecentlyDamaged++;
@@ -515,6 +520,10 @@ namespace Oxide.Plugins
             [DefaultValue(1f)]
             [JsonProperty(PropertyName = "Repair Cost Multiplier")]
             public float RepairCostMultiplier { get; set; }
+            
+            [DefaultValue(30f)]
+            [JsonProperty(PropertyName = "How long after an entity is damaged before it can be repaired (Seconds)")]
+            public float EntityRepairDelay { get; set; }
 
             [JsonProperty(PropertyName = "Chat Commands")]
             public List<string> ChatCommands { get; set; }

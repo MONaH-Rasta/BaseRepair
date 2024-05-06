@@ -12,11 +12,12 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Base Repair", "MJSU", "1.0.9")]
+    [Info("Base Repair", "MJSU", "1.0.10")]
     [Description("Allows player to repair their entire base")]
     internal class BaseRepair : RustPlugin
     {
         #region Class Fields
+
         [PluginReference] private Plugin NoEscape;
 
         private StoredData _storedData; //Plugin Data
@@ -30,9 +31,11 @@ namespace Oxide.Plugins
 
         private readonly List<ulong> _repairingPlayers = new List<ulong>();
         private readonly Hash<uint, List<IOEntity>> _ioEntity = new Hash<uint, List<IOEntity>>();
+        
         #endregion
 
         #region Setup & Loading
+
         private void Init()
         {
             _storedData = Interface.Oxide.DataFileSystem.ReadObject<StoredData>(Name);
@@ -43,26 +46,27 @@ namespace Oxide.Plugins
                 cmd.AddChatCommand(command, this, BaseRepairChatCommand);
             }
         }
-        
+
         protected override void LoadDefaultMessages()
         {
             lang.RegisterMessages(new Dictionary<string, string>
             {
                 [LangKeys.Chat] = $"<color=#bebebe>[<color={AccentColor}>{Title}</color>] {{0}}</color>",
                 [LangKeys.NoPermission] = "You do not have permission to use this command",
-                [LangKeys.RepairInProcess] = "You have a current repair in progress. Please wait for that to finish before repairing again",
+                [LangKeys.RepairInProcess] =
+                    "You have a current repair in progress. Please wait for that to finish before repairing again",
                 [LangKeys.RecentlyDamaged] = "We failed to repair {0} because they were recently damaged",
                 [LangKeys.AmountRepaired] = "We have repaired {0} damaged items in this base. ",
                 [LangKeys.CantAfford] = "We failed to repair {0} because you were missing items to pay for it.",
                 [LangKeys.MissingItems] = "The items you were missing are:",
                 [LangKeys.MissingItem] = "{0}: {1}x",
-                [LangKeys.Enabled] = "You enabled enabled building repair. Hit the building you wish to repair with the hammer and we will do the rest for you.",
+                [LangKeys.Enabled] =
+                    "You enabled enabled building repair. Hit the building you wish to repair with the hammer and we will do the rest for you.",
                 [LangKeys.Disabled] = "You have disabled building repair.",
                 [LangKeys.NoEscape] = "You cannot repair your base right now because you're raid or combat blocked"
-                
             }, this);
         }
-        
+
         protected override void LoadDefaultConfig()
         {
             PrintWarning("Loading Default Config");
@@ -87,20 +91,20 @@ namespace Oxide.Plugins
 
         private void OnServerInitialized()
         {
-            ServerMgr.Instance.StartCoroutine(SetupIoEntities());
+            InvokeHandler.Instance.StartCoroutine(SetupIoEntities());
         }
 
         private IEnumerator SetupIoEntities()
         {
             List<IOEntity> ioEntities = BaseNetworkable.serverEntities.OfType<IOEntity>().ToList();
-            for(int i = 0; i < ioEntities.Count; i++)
+            for (int i = 0; i < ioEntities.Count; i++)
             {
                 IOEntity entity = ioEntities[i];
                 if (entity.OwnerID == 0)
                 {
                     continue;
                 }
-                
+
                 if (i % _pluginConfig.RepairsPerFrame == 0)
                 {
                     yield return null;
@@ -114,7 +118,7 @@ namespace Oxide.Plugins
 
                 if (!_ioEntity.ContainsKey(block.buildingID))
                 {
-                    _ioEntity[block.buildingID] = new List<IOEntity>{entity};
+                    _ioEntity[block.buildingID] = new List<IOEntity> {entity};
                 }
                 else
                 {
@@ -122,9 +126,11 @@ namespace Oxide.Plugins
                 }
             }
         }
+
         #endregion
 
         #region Chat Command
+
         private void BaseRepairChatCommand(BasePlayer player, string cmd, string[] args)
         {
             if (!player.IsAdmin && !HasPermission(player, UsePermission))
@@ -139,9 +145,11 @@ namespace Oxide.Plugins
             Chat(player, enabled ? Lang(LangKeys.Enabled, player) : Lang(LangKeys.Disabled, player));
             SaveData();
         }
+
         #endregion
 
         #region Oxide Hooks
+
         private object OnHammerHit(BasePlayer player, HitInfo info)
         {
             BaseCombatEntity entity = info?.HitEntity as BaseCombatEntity;
@@ -183,13 +191,13 @@ namespace Oxide.Plugins
             {
                 return null;
             }
-            
+
             PlayerRepairStats stats = new PlayerRepairStats();
             BuildingManager.Building building = priv.GetBuilding();
-            ServerMgr.Instance.StartCoroutine(DoBuildingRepair(player, building, stats));
+            InvokeHandler.Instance.StartCoroutine(DoBuildingRepair(player, building, stats));
             return true;
         }
-        
+
         private void OnEntitySpawned(IOEntity entity)
         {
             BuildingBlock block = GetNearbyBuildingBlock(entity);
@@ -197,10 +205,10 @@ namespace Oxide.Plugins
             {
                 return;
             }
-            
+
             if (!_ioEntity.ContainsKey(block.buildingID))
             {
-                _ioEntity[block.buildingID] = new List<IOEntity>{entity};
+                _ioEntity[block.buildingID] = new List<IOEntity> {entity};
             }
             else
             {
@@ -221,32 +229,35 @@ namespace Oxide.Plugins
 
         private void OnBuildingSplit(BuildingManager.Building building, uint newId)
         {
-            uint oldId = building.ID;
-            
-            NextTick(() =>
-            {
-                List<IOEntity> oldEntities = _ioEntity[oldId];
-                if (oldEntities == null)
-                {
-                    return;
-                }
-                
-                foreach (IOEntity oldEntity in oldEntities)
-                {
-                    OnEntitySpawned(oldEntity);
-                }
-            });
+            NextTick(() => { InvokeHandler.Instance.StartCoroutine(UpdateIoEntities(building.ID)); });
         }
+
+        private IEnumerator UpdateIoEntities(uint buildingId)
+        {
+            List<IOEntity> oldEntities = _ioEntity[buildingId];
+            if (oldEntities == null)
+            {
+                yield break;
+            }
+
+            foreach (IOEntity oldEntity in oldEntities)
+            {
+                OnEntitySpawned(oldEntity);
+                yield return null;
+            }
+        }
+
         #endregion
 
         #region Repair Handler
 
-        private IEnumerator DoBuildingRepair(BasePlayer player, BuildingManager.Building building, PlayerRepairStats stats)
+        private IEnumerator DoBuildingRepair(BasePlayer player, BuildingManager.Building building,
+            PlayerRepairStats stats)
         {
             _repairingPlayers.Add(player.userID);
             bool noCostPerm = HasPermission(player, NoCostPermission);
-            
-            for(int index = 0; index < building.decayEntities.Count; index++)
+
+            for (int index = 0; index < building.decayEntities.Count; index++)
             {
                 DecayEntity entity = building.decayEntities[index];
                 DoRepair(player, entity, stats, noCostPerm);
@@ -285,9 +296,9 @@ namespace Oxide.Plugins
             {
                 main.AppendLine(Lang(LangKeys.RecentlyDamaged, player, stats.RecentlyDamaged));
             }
-            
+
             Chat(player, main.ToString());
-            
+
             if (stats.TotalCantAfford > 0)
             {
                 StringBuilder cantAfford = new StringBuilder();
@@ -301,11 +312,11 @@ namespace Oxide.Plugins
                     {
                         continue;
                     }
-                    
+
                     cantAfford.AppendLine(Lang(LangKeys.MissingItem, player,
                         ItemManager.FindItemDefinition(missing.Key).displayName.translated, amountMissing));
                 }
-                
+
                 Chat(player, cantAfford.ToString());
             }
 
@@ -323,7 +334,7 @@ namespace Oxide.Plugins
             {
                 return;
             }
-            
+
             if (Interface.CallHook("OnStructureRepair", this, player) != null)
             {
                 return;
@@ -343,7 +354,7 @@ namespace Oxide.Plugins
                 entity.OnRepairFailed(null, string.Empty);
                 return;
             }
-            
+
             if (!noCost)
             {
                 List<ItemAmount> itemAmounts = entity.RepairCost(healthPercentage);
@@ -363,7 +374,7 @@ namespace Oxide.Plugins
                     }
                 }
 
-                if (itemAmounts.Any(ia => player.inventory.GetAmount(ia.itemid) < (int)ia.amount))
+                if (itemAmounts.Any(ia => player.inventory.GetAmount(ia.itemid) < (int) ia.amount))
                 {
                     entity.OnRepairFailed(null, string.Empty);
 
@@ -378,8 +389,8 @@ namespace Oxide.Plugins
 
                 foreach (ItemAmount amount in itemAmounts)
                 {
-                    player.inventory.Take(null, amount.itemid, (int)amount.amount);
-                    stats.AmountTaken[amount.itemid] += (int)amount.amount;
+                    player.inventory.Take(null, amount.itemid, (int) amount.amount);
+                    stats.AmountTaken[amount.itemid] += (int) amount.amount;
                 }
             }
 
@@ -401,6 +412,7 @@ namespace Oxide.Plugins
         #endregion
 
         #region Helper Methods
+
         private BuildingBlock GetNearbyBuildingBlock(BaseEntity entity)
         {
             float minDistance = float.MaxValue;
@@ -411,70 +423,73 @@ namespace Oxide.Plugins
             for (int i = 0; i < list.Count; i++)
             {
                 BuildingBlock item = list[i];
-                if (item.isServer == entity.isServer)
+                float distance = item.SqrDistance(point);
+                if (distance < minDistance)
                 {
-                    float distance = item.SqrDistance(point);
-                    if (distance < minDistance)
-                    {
-                        minDistance = distance;
-                        buildingBlock = item;
-                    }
+                    minDistance = distance;
+                    buildingBlock = item;
                 }
             }
+
             Pool.FreeList(ref list);
             return buildingBlock;
         }
-        
+
         private bool IsNoEscapeBlocked(BasePlayer player)
         {
             if (NoEscape == null)
             {
                 return false;
             }
-            
-            if(HasPermission(player, NoEscapeRaidRepairPermission) && NoEscape.Call<bool>("IsRaidBlocked", player.UserIDString))
+
+            if (HasPermission(player, NoEscapeRaidRepairPermission) &&
+                NoEscape.Call<bool>("IsRaidBlocked", player.UserIDString))
             {
                 return true;
             }
-            
-            return HasPermission(player, NoEscapeCombatRepairPermission) && NoEscape.Call<bool>("IsCombatBlocked", player.UserIDString);
-        } 
+
+            return HasPermission(player, NoEscapeCombatRepairPermission) &&
+                   NoEscape.Call<bool>("IsCombatBlocked", player.UserIDString);
+        }
 
         private void SaveData() => Interface.Oxide.DataFileSystem.WriteObject(Name, _storedData);
 
         private void Chat(BasePlayer player, string format) => PrintToChat(player, Lang(LangKeys.Chat, player, format));
 
-        private bool HasPermission(BasePlayer player, string perm) => permission.UserHasPermission(player.UserIDString, perm);
-        
+        private bool HasPermission(BasePlayer player, string perm) =>
+            permission.UserHasPermission(player.UserIDString, perm);
+
         private string Lang(string key, BasePlayer player = null, params object[] args)
         {
             try
             {
                 return string.Format(lang.GetMessage(key, this, player?.UserIDString), args);
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 PrintError($"Lang Key '{key}' threw exception\n:{ex}");
                 throw;
             }
         }
+
         #endregion
 
         #region Classes
+
         private class PluginConfig
         {
             [DefaultValue(10)]
             [JsonProperty(PropertyName = "Number of entities to repair per server frame")]
             public int RepairsPerFrame { get; set; }
-            
+
             [DefaultValue(false)]
             [JsonProperty(PropertyName = "Default Enabled")]
             public bool DefaultEnabled { get; set; }
-            
+
             [DefaultValue(1f)]
             [JsonProperty(PropertyName = "Repair Cost Multiplier")]
             public float RepairCostMultiplier { get; set; }
-            
+
             [JsonProperty(PropertyName = "Chat Commands")]
             public List<string> ChatCommands { get; set; }
         }
@@ -492,7 +507,7 @@ namespace Oxide.Plugins
             public Hash<int, int> MissingAmounts { get; } = new Hash<int, int>();
             public Hash<int, int> AmountTaken { get; } = new Hash<int, int>();
         }
-        
+
         private class LangKeys
         {
             public const string Chat = "Chat";
@@ -507,6 +522,7 @@ namespace Oxide.Plugins
             public const string Disabled = "Disabled";
             public const string NoEscape = "NoEscape";
         }
+
         #endregion
     }
 }

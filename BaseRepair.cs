@@ -12,7 +12,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Base Repair", "MJSU", "1.0.22")]
+    [Info("Base Repair", "MJSU", "1.0.23")]
     [Description("Allows player to repair their entire base")]
     internal class BaseRepair : RustPlugin
     {
@@ -49,10 +49,7 @@ namespace Oxide.Plugins
             {
                 cmd.AddChatCommand(command, this, BaseRepairChatCommand);
             }
-            
-            _go = new GameObject(Name);
-            _rb = _go.AddComponent<RepairBehavior>();
-            
+
             UnsubscribeAll();
         }
 
@@ -94,12 +91,20 @@ namespace Oxide.Plugins
 
         private void OnServerInitialized()
         {
+            _go = new GameObject(Name);
+            _rb = _go.AddComponent<RepairBehavior>();
+            
             SubscribeAll();
         }
 
         private void Unload()
         {
-            _rb.StopAllCoroutines();
+            if (_rb)
+            {
+                _rb.StopAllCoroutines();
+                _rb.DoDestroy();
+            }
+           
             GameObject.Destroy(_go);
         }
         #endregion
@@ -480,6 +485,11 @@ namespace Oxide.Plugins
             private void Awake()
             {
                 enabled = false;
+            }
+
+            public void DoDestroy()
+            {
+                Destroy(this);
             }
         }
         #endregion

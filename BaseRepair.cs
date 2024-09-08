@@ -18,7 +18,7 @@ internal class BaseRepair : RustPlugin
 {
     #region Class Fields
 
-    [PluginReference] private Plugin NoEscape, RaidBlock;
+    [PluginReference] private readonly Plugin NoEscape, RaidBlock;
 
     private StoredData _storedData; //Plugin Data
     private PluginConfig _pluginConfig; //Plugin Config
@@ -55,7 +55,7 @@ internal class BaseRepair : RustPlugin
 
     protected override void LoadDefaultMessages()
     {
-        lang.RegisterMessages(new Dictionary<string, string>
+        lang.RegisterMessages(new()
         {
             [LangKeys.Chat] = $"<color=#bebebe>[<color={AccentColor}>{Title}</color>] {{0}}</color>",
             [LangKeys.NoPermission] = "You do not have permission to use this command",
@@ -83,7 +83,7 @@ internal class BaseRepair : RustPlugin
 
     private PluginConfig AdditionalConfig(PluginConfig config)
     {
-        config.ChatCommands ??= new List<string>
+        config.ChatCommands ??= new()
         {
             "br"
         };
@@ -92,7 +92,7 @@ internal class BaseRepair : RustPlugin
 
     private void OnServerInitialized()
     {
-        _go = new GameObject(Name);
+        _go = new(Name);
         _rb = _go.AddComponent<RepairBehavior>();
             
         SubscribeAll();
@@ -290,7 +290,7 @@ internal class BaseRepair : RustPlugin
 
         if (stats.TotalCantAfford > 0)
         {
-            List<ItemAmount> missingAmounts = Pool.GetList<ItemAmount>();
+            List<ItemAmount> missingAmounts = Pool.Get<List<ItemAmount>>();
             foreach (KeyValuePair<int, ItemAmount> missing in stats.MissingAmounts)
             {
                 float amountMissing = missing.Value.amount - player.inventory.GetAmount(missing.Key);
@@ -350,7 +350,7 @@ internal class BaseRepair : RustPlugin
 
         if (!noCost)
         {
-            List<ItemAmount> itemAmounts = Pool.GetList<ItemAmount>();
+            List<ItemAmount> itemAmounts = Pool.Get<List<ItemAmount>>();
             GetEntityRepairCost(entity, itemAmounts, healthPercentage);
             if (!HasRepairCost(itemAmounts))
             {
@@ -393,7 +393,7 @@ internal class BaseRepair : RustPlugin
                 return;
             }
 
-            List<Item> items = Pool.GetList<Item>();
+            List<Item> items = Pool.Get<List<Item>>();
             foreach (ItemAmount amount in itemAmounts)
             {
                 player.inventory.Take(items, amount.itemid, (int) amount.amount);
@@ -406,7 +406,7 @@ internal class BaseRepair : RustPlugin
                 item.Remove();
             }
 
-            Pool.FreeList(ref items);
+            Pool.FreeUnmanaged(ref items);
             FreeItemAmounts(itemAmounts);
         }
 
@@ -490,17 +490,15 @@ internal class BaseRepair : RustPlugin
             _itemAmountPool.Free(ref amount);
         }
             
-        Pool.FreeList(ref amounts);
+        Pool.FreeUnmanaged(ref amounts);
     }
     #endregion
 
     #region Helper Methods
     public void SendMissingItemAmounts(BasePlayer player, List<ItemAmount> itemAmounts)
     {
-        using (ItemAmountList itemAmountList = ItemAmount.SerialiseList(itemAmounts))
-        {
-            player.ClientRPCPlayer(null, player, "Client_OnRepairFailedResources", itemAmountList);
-        }
+        using ItemAmountList itemAmountList = ItemAmount.SerialiseList(itemAmounts);
+        player.ClientRPC(RpcTarget.Player("Client_OnRepairFailedResources", player), itemAmountList);
     }
         
     public void SubscribeAll()
@@ -593,7 +591,7 @@ internal class BaseRepair : RustPlugin
 
     private class StoredData
     {
-        public Hash<ulong, bool> RepairEnabled = new();
+        public readonly Hash<ulong, bool> RepairEnabled = new();
     }
 
     private class PlayerRepairStats
@@ -653,7 +651,7 @@ internal class BaseRepair : RustPlugin
         
     private class ItemAmountPool : BasePool<ItemAmount>
     {
-        public ItemAmountPool() : base(() => new ItemAmount())
+        public ItemAmountPool() : base(() => new())
         {
         }
             

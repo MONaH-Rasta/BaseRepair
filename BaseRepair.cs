@@ -18,7 +18,7 @@ internal class BaseRepair : RustPlugin
 {
     #region Class Fields
 
-    [PluginReference] private readonly Plugin NoEscape, RaidBlock;
+    [PluginReference] private Plugin NoEscape, RaidBlock;
 
     private StoredData _storedData; //Plugin Data
     private PluginConfig _pluginConfig; //Plugin Config
@@ -55,7 +55,7 @@ internal class BaseRepair : RustPlugin
 
     protected override void LoadDefaultMessages()
     {
-        lang.RegisterMessages(new()
+        lang.RegisterMessages(new Dictionary<string, string>
         {
             [LangKeys.Chat] = $"<color=#bebebe>[<color={AccentColor}>{Title}</color>] {{0}}</color>",
             [LangKeys.NoPermission] = "You do not have permission to use this command",
@@ -83,7 +83,7 @@ internal class BaseRepair : RustPlugin
 
     private PluginConfig AdditionalConfig(PluginConfig config)
     {
-        config.ChatCommands ??= new()
+        config.ChatCommands ??= new List<string>
         {
             "br"
         };
@@ -92,9 +92,9 @@ internal class BaseRepair : RustPlugin
 
     private void OnServerInitialized()
     {
-        _go = new(Name);
+        _go = new GameObject(Name);
         _rb = _go.AddComponent<RepairBehavior>();
-
+            
         SubscribeAll();
     }
 
@@ -105,7 +105,7 @@ internal class BaseRepair : RustPlugin
             _rb.StopAllCoroutines();
             _rb.DoDestroy();
         }
-
+           
         GameObject.Destroy(_go);
     }
     #endregion
@@ -135,7 +135,7 @@ internal class BaseRepair : RustPlugin
         {
             return null;
         }
-
+            
         if (entity is BaseVehicle)
         {
             return null;
@@ -158,39 +158,39 @@ internal class BaseRepair : RustPlugin
         }
 
         bool hasNoAuth = HasPermission(player, NoAuthPermission);
-
+            
         BuildingPrivlidge priv = player.GetBuildingPrivilege();
         if (priv && !hasNoAuth && !priv.IsAuthed(player))
         {
             return null;
         }
-
+            
         BuildingManager.Building building = null;
         if (entity is DecayEntity)
         {
             building = ((DecayEntity)entity).GetBuilding();
         }
-
+            
         if (building == null)
         {
             if (!priv)
             {
                 return null;
             }
-
+                
             building = priv.GetBuilding();
             if (building == null)
             {
                 return null;
             }
         }
-
+            
         priv = building.GetDominatingBuildingPrivilege();
         if (!priv && !_pluginConfig.AllowNoTcRepair)
         {
             return null;
         }
-
+            
         if (priv && !hasNoAuth && !priv.IsAuthed(player))
         {
             return null;
@@ -202,11 +202,11 @@ internal class BaseRepair : RustPlugin
         {
             return null;
         }
-
+            
         _rb.StartCoroutine(DoBuildingRepair(player, building, stats));
         return _true;
     }
-
+    
     public bool CanRepair(BasePlayer player)
     {
         if (!HasPermission(player, UsePermission))
@@ -226,14 +226,14 @@ internal class BaseRepair : RustPlugin
 
         return _pluginConfig.DefaultEnabled;
     }
-
+    
     public bool IsRepairBlocked(BasePlayer player)
     {
         if (Interface.Call("CanBaseRepair", player) is bool canRepair)
         {
             return canRepair;
         }
-
+        
         if (IsPluginLoaded(NoEscape) && NoEscape.Call("CanDo", "repair", player) is string result && !string.IsNullOrEmpty(result))
         {
             Chat(player, result);
@@ -257,7 +257,7 @@ internal class BaseRepair : RustPlugin
     {
         _repairingPlayers.Add(player.userID);
         bool noCostPerm = HasPermission(player, NoCostPermission);
-
+            
         for (int index = 0; index < building.decayEntities.Count; index++)
         {
             DecayEntity entity = building.decayEntities[index];
@@ -290,7 +290,7 @@ internal class BaseRepair : RustPlugin
 
         if (stats.TotalCantAfford > 0)
         {
-            List<ItemAmount> missingAmounts = Pool.Get<List<ItemAmount>>();
+            List<ItemAmount> missingAmounts = Pool.GetList<ItemAmount>();
             foreach (KeyValuePair<int, ItemAmount> missing in stats.MissingAmounts)
             {
                 float amountMissing = missing.Value.amount - player.inventory.GetAmount(missing.Key);
@@ -303,7 +303,7 @@ internal class BaseRepair : RustPlugin
 
                 missingAmounts.Add(missing.Value);
             }
-
+                
             SendMissingItemAmounts(player, missingAmounts);
             FreeItemAmounts(missingAmounts);
         }
@@ -350,7 +350,7 @@ internal class BaseRepair : RustPlugin
 
         if (!noCost)
         {
-            List<ItemAmount> itemAmounts = Pool.Get<List<ItemAmount>>();
+            List<ItemAmount> itemAmounts = Pool.GetList<ItemAmount>();
             GetEntityRepairCost(entity, itemAmounts, healthPercentage);
             if (!HasRepairCost(itemAmounts))
             {
@@ -372,7 +372,7 @@ internal class BaseRepair : RustPlugin
             if (!CanAffordRepair(player, itemAmounts))
             {
                 entity.OnRepairFailed(null, string.Empty);
-
+                    
                 foreach (ItemAmount amount in itemAmounts)
                 {
                     ItemAmount missing = stats.MissingAmounts[amount.itemid];
@@ -393,7 +393,7 @@ internal class BaseRepair : RustPlugin
                 return;
             }
 
-            List<Item> items = Pool.Get<List<Item>>();
+            List<Item> items = Pool.GetList<Item>();
             foreach (ItemAmount amount in itemAmounts)
             {
                 player.inventory.Take(items, amount.itemid, (int) amount.amount);
@@ -406,7 +406,7 @@ internal class BaseRepair : RustPlugin
                 item.Remove();
             }
 
-            Pool.FreeUnmanaged(ref items);
+            Pool.FreeList(ref items);
             FreeItemAmounts(itemAmounts);
         }
 
@@ -446,17 +446,17 @@ internal class BaseRepair : RustPlugin
         {
             return;
         }
-
+            
         float repairCostFraction = entity.RepairCostFraction();
         for (int index = 0; index < entityAmount.Count; index++)
         {
             ItemAmount itemAmount = entityAmount[index];
-
+                
             if (entity.repair.ignoreForRepair && itemAmount.itemDef.itemid == entity.repair.ignoreForRepair.itemid)
             {
                 continue;
             }
-
+                
             int amount = Mathf.RoundToInt(itemAmount.amount * repairCostFraction * missingHealthFraction);
             if (amount > 0)
             {
@@ -489,28 +489,30 @@ internal class BaseRepair : RustPlugin
             ItemAmount amount = amounts[index];
             _itemAmountPool.Free(ref amount);
         }
-
-        Pool.FreeUnmanaged(ref amounts);
+            
+        Pool.FreeList(ref amounts);
     }
     #endregion
 
     #region Helper Methods
     public void SendMissingItemAmounts(BasePlayer player, List<ItemAmount> itemAmounts)
     {
-        using ItemAmountList itemAmountList = ItemAmount.SerialiseList(itemAmounts);
-        player.ClientRPC(RpcTarget.Player("Client_OnRepairFailedResources", player), itemAmountList);
+        using (ItemAmountList itemAmountList = ItemAmount.SerialiseList(itemAmounts))
+        {
+            player.ClientRPCPlayer(null, player, "Client_OnRepairFailedResources", itemAmountList);
+        }
     }
-
+        
     public void SubscribeAll()
     {
         Subscribe(nameof(OnHammerHit));
     }
-
+        
     public void UnsubscribeAll()
     {
         Unsubscribe(nameof(OnHammerHit));
     }
-
+    
     public bool IsPluginLoaded(Plugin plugin) => plugin is { IsLoaded: true };
 
     private void SaveData() => Interface.Oxide.DataFileSystem.WriteObject(Name, _storedData);
@@ -523,7 +525,7 @@ internal class BaseRepair : RustPlugin
     {
         return lang.GetMessage(key, this, player?.UserIDString);
     }
-
+        
     private string Lang(string key, BasePlayer player = null, params object[] args)
     {
         try
@@ -553,7 +555,7 @@ internal class BaseRepair : RustPlugin
         }
     }
     #endregion
-
+        
     #region Classes
 
     private class PluginConfig
@@ -565,7 +567,7 @@ internal class BaseRepair : RustPlugin
         [DefaultValue(false)]
         [JsonProperty(PropertyName = "Default Enabled")]
         public bool DefaultEnabled { get; set; }
-
+            
         [DefaultValue(false)]
         [JsonProperty(PropertyName = "Allow Repairing Bases Without A Tool Cupboard")]
         public bool AllowNoTcRepair { get; set; }
@@ -573,17 +575,17 @@ internal class BaseRepair : RustPlugin
         [DefaultValue(1f)]
         [JsonProperty(PropertyName = "Repair Cost Multiplier")]
         public float RepairCostMultiplier { get; set; }
-
+            
         [DefaultValue(30f)]
         [JsonProperty(PropertyName = "How long after an entity is damaged before it can be repaired (Seconds)")]
         public float EntityRepairDelay { get; set; }
 
         [JsonProperty(PropertyName = "Chat Commands")]
         public List<string> ChatCommands { get; set; }
-
+            
         [JsonProperty(PropertyName = "Enable Repairs Using A Skinned Hammer")]
         public bool EnableHammerSkin { get; set; }
-
+            
         [DefaultValue(2902701361)]
         [JsonProperty(PropertyName = "Repair Hammer Skin ID")]
         public ulong HammerSkinId { get; set; }
@@ -591,7 +593,7 @@ internal class BaseRepair : RustPlugin
 
     private class StoredData
     {
-        public readonly Hash<ulong, bool> RepairEnabled = new();
+        public Hash<ulong, bool> RepairEnabled = new();
     }
 
     private class PlayerRepairStats
@@ -627,7 +629,7 @@ internal class BaseRepair : RustPlugin
         {
             Init = init;
         }
-
+            
         public virtual T Get()
         {
             if (Pool.Count == 0)
@@ -638,7 +640,7 @@ internal class BaseRepair : RustPlugin
             int index = Pool.Count - 1; //Removing the last element prevents an array copy.
             T entity = Pool[index];
             Pool.RemoveAt(index);
-
+                
             return entity;
         }
 
@@ -648,13 +650,13 @@ internal class BaseRepair : RustPlugin
             entity = null;
         }
     }
-
+        
     private class ItemAmountPool : BasePool<ItemAmount>
     {
-        public ItemAmountPool() : base(() => new())
+        public ItemAmountPool() : base(() => new ItemAmount())
         {
         }
-
+            
         public override void Free(ref ItemAmount ia)
         {
             ia.itemDef = null;

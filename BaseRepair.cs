@@ -12,7 +12,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins;
 
-[Info("Base Repair", "MJSU", "1.0.27")]
+[Info("Base Repair", "MJSU", "1.0.28")]
 [Description("Allows player to repair their entire base")]
 internal class BaseRepair : RustPlugin
 {
@@ -356,7 +356,7 @@ internal class BaseRepair : RustPlugin
             {
                 entity.health += missingHealth;
                 entity.SendNetworkUpdate();
-                entity.OnRepairFinished();
+                entity.OnRepairFinished(player);
                 FreeItemAmounts(itemAmounts);
                 return;
             }
@@ -419,7 +419,7 @@ internal class BaseRepair : RustPlugin
         }
         else
         {
-            entity.OnRepairFinished();
+            entity.OnRepairFinished(player);
         }
 
         stats.TotalSuccess++;

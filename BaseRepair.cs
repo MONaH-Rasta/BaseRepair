@@ -12,7 +12,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins;
 
-[Info("Base Repair", "MJSU", "1.0.28")]
+[Info("Base Repair", "MJSU", "1.0.29")]
 [Description("Allows player to repair their entire base")]
 internal class BaseRepair : RustPlugin
 {
@@ -61,10 +61,11 @@ internal class BaseRepair : RustPlugin
             [LangKeys.NoPermission] = "You do not have permission to use this command",
             [LangKeys.RepairInProcess] = "You have a current repair in progress. Please wait for that to finish before repairing again",
             [LangKeys.RecentlyDamaged] = "We failed to repair {0} because they were recently damaged",
-            [LangKeys.AmountRepaired] = "We have repaired {0} damaged items in this base. ",
+            [LangKeys.AmountRepaired] = "We have repaired {0} damaged items in this base.",
             [LangKeys.Enabled] = "You enabled enabled building repair. Hit the building you wish to repair with the hammer and we will do the rest for you.",
             [LangKeys.Disabled] = "You have disabled building repair.",
-            [LangKeys.RaidBlockPluginBlocked] = "You are currently raid blocked and cannot base repair this building"
+            [LangKeys.RaidBlockPluginBlocked] = "You are currently raid blocked and cannot base repair this building",
+            [LangKeys.PlayerBoatAtStation] = "Player boats can only be repaired while at a boat building station.",
         }, this);
     }
 
@@ -131,12 +132,7 @@ internal class BaseRepair : RustPlugin
     private object OnHammerHit(BasePlayer player, HitInfo info)
     {
         BaseCombatEntity entity = info?.HitEntity as BaseCombatEntity;
-        if (entity == null || entity.IsDestroyed)
-        {
-            return null;
-        }
-            
-        if (entity is BaseVehicle or ConstructableEntity)
+        if (!entity || entity.IsDestroyed)
         {
             return null;
         }
@@ -151,46 +147,66 @@ internal class BaseRepair : RustPlugin
             return null;
         }
 
-        if (_repairingPlayers.Contains(player.userID))
+        if (_repairingPlayers.Contains(player.userID.Get()))
         {
             Chat(player, Lang(LangKeys.RepairInProcess, player));
             return _true;
         }
 
+        if (TryStartBoatBuildingStationRepair(player, entity))
+        {
+            return _true;
+        }
+
+        if (TryStartPlayerBoatRepair(player, entity))
+        {
+            return _true;
+        }
+
+        if (entity is not (BaseVehicle or ConstructableEntity))
+        {
+            return TryStartBuildingRepair(player, entity);
+        }
+
+        return null;
+    }
+
+    private object TryStartBuildingRepair(BasePlayer player, BaseCombatEntity entity)
+    {
         bool hasNoAuth = HasPermission(player, NoAuthPermission);
-            
+
         BuildingPrivlidge priv = player.GetBuildingPrivilege();
         if (priv && !hasNoAuth && !priv.IsAuthed(player))
         {
             return null;
         }
-            
+
         BuildingManager.Building building = null;
         if (entity is DecayEntity decayEntity)
         {
             building = decayEntity.GetBuilding();
         }
-            
+
         if (building == null)
         {
             if (!priv)
             {
                 return null;
             }
-                
+
             building = priv.GetBuilding();
             if (building == null)
             {
                 return null;
             }
         }
-            
+
         priv = building.GetDominatingBuildingPrivilege();
         if (!priv && !_pluginConfig.AllowNoTcRepair)
         {
             return null;
         }
-            
+
         if (priv && !hasNoAuth && !priv.IsAuthed(player))
         {
             return null;
@@ -202,11 +218,77 @@ internal class BaseRepair : RustPlugin
         {
             return null;
         }
-            
+
         _rb.StartCoroutine(DoBuildingRepair(player, building, stats));
         return _true;
     }
-    
+
+    private bool TryStartPlayerBoatRepair(BasePlayer player, BaseCombatEntity entity)
+    {
+        if (!_pluginConfig.AllowPlayerBoatRepair)
+        {
+            return false;
+        }
+
+        PlayerBoat playerBoat = PlayerBoat.GetParentPlayerBoat(entity, includeEntityItself: true);
+        if (!playerBoat || playerBoat.IsDying || playerBoat.IsDestroyed)
+        {
+            return false;
+        }
+
+        if (_pluginConfig.RequirePlayerBoatAtStation)
+        {
+            Chat(player, Lang(LangKeys.PlayerBoatAtStation, player));
+            return false;
+        }
+
+        bool hasNoAuth = HasPermission(player, NoAuthPermission);
+        if (!hasNoAuth && !playerBoat.IsAuthedForBuilding(player))
+        {
+            return false;
+        }
+
+        if (Interface.CallHook("OnBaseRepair", playerBoat, player) != null)
+        {
+            return false;
+        }
+
+        PlayerRepairStats stats = new();
+        _rb.StartCoroutine(DoPlayerBoatRepair(player, stats, playerBoat, playerBoat.BoatBuildingBlocks.Cached, playerBoat.Deployables.Cached, freeListsAfter: false));
+        return true;
+    }
+
+    private bool TryStartBoatBuildingStationRepair(BasePlayer player, BaseCombatEntity entity)
+    {
+        if (!_pluginConfig.AllowPlayerBoatRepair)
+        {
+            return false;
+        }
+
+        BoatBuildingStation boatBuildingStation = BoatBuildingStation.GetForPosition(entity.transform.position);
+        if (!boatBuildingStation || boatBuildingStation.IsDestroyed)
+        {
+            return false;
+        }
+
+        bool hasNoAuth = HasPermission(player, NoAuthPermission);
+        if (!hasNoAuth && !boatBuildingStation.CanPlayerBuild(player))
+        {
+            return false;
+        }
+
+        if (Interface.CallHook("OnBaseRepair", boatBuildingStation, player) != null)
+        {
+            return false;
+        }
+
+        PlayerRepairStats stats = new();
+        List<BoatBuildingBlock> blocks = BoatBuildingStation.GetEntitiesInBuildArea<BoatBuildingBlock>(boatBuildingStation.BuildArea, 134217728, server: true);
+        List<BaseEntity> deployables = boatBuildingStation.GetDeployedEntities();
+        _rb.StartCoroutine(DoPlayerBoatRepair(player, stats, null, blocks, deployables, freeListsAfter: true));
+        return true;
+    }
+
     public bool CanRepair(BasePlayer player)
     {
         if (!HasPermission(player, UsePermission))
@@ -226,14 +308,14 @@ internal class BaseRepair : RustPlugin
 
         return _pluginConfig.DefaultEnabled;
     }
-    
+
     public bool IsRepairBlocked(BasePlayer player)
     {
         if (Interface.Call("CanBaseRepair", player) is bool canRepair)
         {
             return canRepair;
         }
-        
+
         if (IsPluginLoaded(NoEscape) && NoEscape.Call("CanDo", "repair", player) is string result && !string.IsNullOrEmpty(result))
         {
             Chat(player, result);
@@ -257,27 +339,89 @@ internal class BaseRepair : RustPlugin
     {
         _repairingPlayers.Add(player.userID);
         bool noCostPerm = HasPermission(player, NoCostPermission);
-            
-        for (int index = 0; index < building.decayEntities.Count; index++)
-        {
-            DecayEntity entity = building.decayEntities[index];
-            DoRepair(player, entity, stats, noCostPerm);
 
-            for (int i = 0; i < entity.children.Count; i++)
+        try
+        {
+            for (int index = 0; index < building.decayEntities.Count; index++)
             {
-                BaseEntity childEntity = entity.children[i];
-                if (childEntity is BaseLadder ladder)
+                DecayEntity entity = building.decayEntities[index];
+                DoRepair(player, entity, stats, noCostPerm);
+
+                for (int i = 0; i < entity.children.Count; i++)
                 {
-                    DoRepair(player, ladder, stats, noCostPerm);
+                    BaseEntity childEntity = entity.children[i];
+                    if (childEntity is BaseLadder ladder)
+                    {
+                        DoRepair(player, ladder, stats, noCostPerm);
+                    }
+                }
+
+                if (index % _pluginConfig.RepairsPerFrame == 0)
+                {
+                    yield return null;
+                }
+            }
+        }
+        finally
+        {
+            FinishRepair(player, stats);
+        }
+    }
+
+    private IEnumerator DoPlayerBoatRepair(BasePlayer player, PlayerRepairStats stats, BaseCombatEntity boatEntity, List<BoatBuildingBlock> blocks, List<BaseEntity> deployables, bool freeListsAfter)
+    {
+        _repairingPlayers.Add(player.userID);
+        bool noCostPerm = HasPermission(player, NoCostPermission);
+        int repaired = 0;
+
+        try
+        {
+            if (boatEntity)
+            {
+                DoRepair(player, boatEntity, stats, noCostPerm);
+            }
+
+            for (int index = 0; index < blocks.Count; index++)
+            {
+                DoRepair(player, blocks[index], stats, noCostPerm);
+
+                repaired++;
+                if (repaired % _pluginConfig.RepairsPerFrame == 0)
+                {
+                    yield return null;
                 }
             }
 
-            if (index % _pluginConfig.RepairsPerFrame == 0)
+            yield return null;
+
+            for (int index = 0; index < deployables.Count; index++)
             {
-                yield return null;
+                if (deployables[index] is BaseCombatEntity deployable)
+                {
+                    DoRepair(player, deployable, stats, noCostPerm);
+                }
+
+                repaired++;
+                if (repaired % _pluginConfig.RepairsPerFrame == 0)
+                {
+                    yield return null;
+                }
             }
         }
+        finally
+        {
+            if (freeListsAfter)
+            {
+                Pool.FreeUnmanaged(ref blocks);
+                Pool.FreeUnmanaged(ref deployables);
+            }
 
+            FinishRepair(player, stats);
+        }
+    }
+
+    private void FinishRepair(BasePlayer player, PlayerRepairStats stats)
+    {
         _sb.Clear();
         _sb.AppendLine(Lang(LangKeys.AmountRepaired, player, stats.TotalSuccess));
 
@@ -303,7 +447,7 @@ internal class BaseRepair : RustPlugin
 
                 missingAmounts.Add(missing.Value);
             }
-                
+
             SendMissingItemAmounts(player, missingAmounts);
             FreeItemAmounts(missingAmounts);
         }
@@ -313,7 +457,7 @@ internal class BaseRepair : RustPlugin
             player.Command("note.inv", taken.Key, -taken.Value);
         }
 
-        _repairingPlayers.Remove(player.userID);
+        _repairingPlayers.Remove(player.userID.Get());
     }
 
     private void DoRepair(BasePlayer player, BaseCombatEntity entity, PlayerRepairStats stats, bool noCost)
@@ -372,7 +516,7 @@ internal class BaseRepair : RustPlugin
             if (!CanAffordRepair(player, itemAmounts))
             {
                 entity.OnRepairFailed(null, string.Empty);
-                    
+
                 foreach (ItemAmount amount in itemAmounts)
                 {
                     ItemAmount missing = stats.MissingAmounts[amount.itemid];
@@ -441,22 +585,22 @@ internal class BaseRepair : RustPlugin
 
     public void GetEntityRepairCost(BaseCombatEntity entity, List<ItemAmount> repairAmounts, float missingHealthFraction)
     {
-        List<ItemAmount> entityAmount = entity.BuildCost();
+        List<ItemAmount> entityAmount = entity.BuildCost().Items;
         if (entityAmount == null)
         {
             return;
         }
-            
+
         float repairCostFraction = entity.RepairCostFraction();
         for (int index = 0; index < entityAmount.Count; index++)
         {
             ItemAmount itemAmount = entityAmount[index];
-                
+
             if (entity.repair.ignoreForRepair && itemAmount.itemDef.itemid == entity.repair.ignoreForRepair.itemid)
             {
                 continue;
             }
-                
+
             int amount = Mathf.RoundToInt(itemAmount.amount * repairCostFraction * missingHealthFraction);
             if (amount > 0)
             {
@@ -489,7 +633,7 @@ internal class BaseRepair : RustPlugin
             ItemAmount amount = amounts[index];
             _itemAmountPool.Free(ref amount);
         }
-            
+
         Pool.FreeUnmanaged(ref amounts);
     }
     #endregion
@@ -500,17 +644,17 @@ internal class BaseRepair : RustPlugin
         using ItemAmountList itemAmountList = ItemAmount.SerialiseList(itemAmounts);
         player.ClientRPC(RpcTarget.Player("Client_OnRepairFailedResources", player), itemAmountList);
     }
-        
+
     public void SubscribeAll()
     {
         Subscribe(nameof(OnHammerHit));
     }
-        
+
     public void UnsubscribeAll()
     {
         Unsubscribe(nameof(OnHammerHit));
     }
-    
+
     public bool IsPluginLoaded(Plugin plugin) => plugin is { IsLoaded: true };
 
     private void SaveData() => Interface.Oxide.DataFileSystem.WriteObject(Name, _storedData);
@@ -523,7 +667,7 @@ internal class BaseRepair : RustPlugin
     {
         return lang.GetMessage(key, this, player?.UserIDString);
     }
-        
+
     private string Lang(string key, BasePlayer player = null, params object[] args)
     {
         try
@@ -553,7 +697,7 @@ internal class BaseRepair : RustPlugin
         }
     }
     #endregion
-        
+
     #region Classes
 
     private class PluginConfig
@@ -565,10 +709,18 @@ internal class BaseRepair : RustPlugin
         [DefaultValue(false)]
         [JsonProperty(PropertyName = "Default Enabled")]
         public bool DefaultEnabled { get; set; }
-            
+
         [DefaultValue(false)]
         [JsonProperty(PropertyName = "Allow Repairing Bases Without A Tool Cupboard")]
         public bool AllowNoTcRepair { get; set; }
+
+        [DefaultValue(true)]
+        [JsonProperty(PropertyName = "Allow Repairing Player Boats")]
+        public bool AllowPlayerBoatRepair { get; set; }
+
+        [DefaultValue(false)]
+        [JsonProperty(PropertyName = "Require Player Boat At Boat Building Station")]
+        public bool RequirePlayerBoatAtStation { get; set; }
 
         [DefaultValue(1f)]
         [JsonProperty(PropertyName = "Repair Cost Multiplier")]
@@ -613,6 +765,7 @@ internal class BaseRepair : RustPlugin
         public const string Enabled = "Enabled";
         public const string Disabled = "Disabled";
         public const string RaidBlockPluginBlocked = "RaidBlockPlugin.Blocked";
+        public const string PlayerBoatAtStation = nameof(PlayerBoatAtStation);
     }
 
     #endregion
@@ -620,40 +773,37 @@ internal class BaseRepair : RustPlugin
     #region Pool
     private class BasePool<T> where T : class
     {
-        protected readonly List<T> Pool = new();
-        protected readonly Func<T> Init;
+        private readonly List<T> _pool = new();
+        private readonly Func<T> _init;
 
-        public BasePool(Func<T> init)
+        protected BasePool(Func<T> init)
         {
-            Init = init;
+            _init = init;
         }
             
-        public virtual T Get()
+        public T Get()
         {
-            if (Pool.Count == 0)
+            if (_pool.Count == 0)
             {
-                return Init.Invoke();
+                return _init.Invoke();
             }
 
-            int index = Pool.Count - 1; //Removing the last element prevents an array copy.
-            T entity = Pool[index];
-            Pool.RemoveAt(index);
-                
+            int index = _pool.Count - 1; //Removing the last element prevents an array copy.
+            T entity = _pool[index];
+            _pool.RemoveAt(index);
             return entity;
         }
 
         public virtual void Free(ref T entity)
         {
-            Pool.Add(entity);
+            _pool.Add(entity);
             entity = null;
         }
     }
         
-    private class ItemAmountPool : BasePool<ItemAmount>
+    private sealed class ItemAmountPool : BasePool<ItemAmount>
     {
-        public ItemAmountPool() : base(() => new ItemAmount())
-        {
-        }
+        public ItemAmountPool() : base(() => new ItemAmount()) { }
             
         public override void Free(ref ItemAmount ia)
         {

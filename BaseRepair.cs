@@ -12,7 +12,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins;
 
-[Info("Base Repair", "MJSU", "1.0.29")]
+[Info("Base Repair", "MJSU", "1.0.30")]
 [Description("Allows player to repair their entire base")]
 internal class BaseRepair : RustPlugin
 {
@@ -265,7 +265,7 @@ internal class BaseRepair : RustPlugin
             return false;
         }
 
-        BoatBuildingStation boatBuildingStation = BoatBuildingStation.GetForPosition(entity.transform.position);
+        BoatBuildingStation boatBuildingStation = BoatBuildingStation.GetForPosition(entity.transform.position, true);
         if (!boatBuildingStation || boatBuildingStation.IsDestroyed)
         {
             return false;
